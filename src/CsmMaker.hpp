@@ -11,6 +11,10 @@ namespace lapis {
         virtual ~CsmMaker() = default;
         virtual Raster<csm_t> getRaster() const = 0;
         virtual void addPoints(const std::span<const LasPoint>& points) = 0;
+
+        //no bounds checking
+        virtual void addPointsUnsafe(const std::span<const LasPoint>& points) = 0;
+
         using CsmMergeFunc = std::function<csm_t(csm_t, csm_t)>;
         virtual CsmMergeFunc getMergeFunction() const = 0;
 

@@ -2,11 +2,11 @@
 #include"CsmMaxHeight.hpp"
 
 namespace lapis {
-    CsmMakerBuilder CsmMakerBuilder::maxHeight()
+    CsmMakerBuilder CsmMakerBuilder::maxHeight(coord_t footprintDiameterCsmXYUnits)
     {
         CsmMakerBuilder out;
-        out._buildFunc = [](const Alignment& a) {
-            return std::make_unique<CsmMaxHeight>(a);
+        out._buildFunc = [footprintDiameterCsmXYUnits](const Alignment& a) {
+            return std::make_unique<CsmMaxHeight>(a, footprintDiameterCsmXYUnits);
             };
         return out;
     }

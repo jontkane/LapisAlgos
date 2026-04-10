@@ -41,7 +41,7 @@ namespace lapis {
         class CsmMosaicBuilder;
     public:
 
-        static CsmMakerBuilder maxHeight();
+        static CsmMakerBuilder maxHeight(coord_t footprintDiameterCsmXYUnits = 0);
 
         template<class Algo, class... Args>
         static CsmMakerBuilder fromAlgo(Args&&... args);

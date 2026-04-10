@@ -50,6 +50,10 @@ namespace lapis {
     {
         _csm->addPoints(points);
     }
+    void CsmSmoother::addPointsUnsafe(const std::span<const LasPoint>& points)
+    {
+        _csm->addPointsUnsafe(points);
+    }
     CsmMaker::CsmMergeFunc CsmSmoother::getMergeFunction() const
     {
         return CsmMaker::mergeByMean;

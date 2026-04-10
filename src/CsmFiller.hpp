@@ -11,6 +11,7 @@ namespace lapis {
         CsmFiller(std::unique_ptr<CsmMaker> csmMaker, int neighborsNeeded, coord_t lookDistCsmXYUnits);
         Raster<csm_t> getRaster() const override;
         void addPoints(const std::span<const LasPoint>& points) override;
+        void addPointsUnsafe(const std::span<const LasPoint>& points) override;
         CsmMergeFunc getMergeFunction() const override;
     private:
         std::unique_ptr<CsmMaker> _csmMaker;

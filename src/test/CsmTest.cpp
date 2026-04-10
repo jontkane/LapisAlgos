@@ -4,55 +4,138 @@
 TEST(CsmTest, CsmMaxHeightTest) {
     using namespace lapis;
 
-    Alignment a{ 0,0,4,4,1,1 };
-    Raster<csm_t> expected{ a };
-    std::vector<LasPoint> points;
+    Alignment a{ Extent(0, 10, 0, 10), 10, 10 };
 
-    auto addPointByRowCol = [&](rowcol_t row, rowcol_t col, coord_t z) {
-        coord_t xCenter = a.xFromCol(col);
-        coord_t yCenter = a.yFromRow(row);
+    auto addPoint = [](std::vector<LasPoint>&points, Raster<csm_t>& r, coord_t x, coord_t y, coord_t z) {
+        points.emplace_back(x, y, z, 0, 0);
+        auto v = r.atXY(x, y);
+        v.has_value() = true;
+        v.value() = std::max(v.value(), z);
+    };
+    auto addPointRadius = [](std::vector<LasPoint>&points, Raster<csm_t>& r, coord_t x, coord_t y, coord_t z, coord_t radius) {
+        points.emplace_back(x, y, z, 0, 0);
+        coord_t sqrtTwo = std::sqrt(2.);
+        std::vector<std::pair<coord_t, coord_t>> offsets = {
+            {0, 0},
+            {radius, 0},
+            {-radius, 0},
+            {0, radius},
+            {0, -radius},
+            {radius / sqrtTwo, radius / sqrtTwo},
+            {radius / sqrtTwo, -radius / sqrtTwo},
+            {-radius / sqrtTwo, radius / sqrtTwo},
+            {-radius / sqrtTwo, -radius / sqrtTwo} };
 
-        //slightly shifting points within the cell to make sure the class functions with more than just the cell center
-        static coord_t adj = 0;
-        coord_t x = xCenter + adj;
-        adj += 0.1;
-        if (adj >= a.xres() / 2) {
-            adj = -a.xres() / 2 + 0.1;
-        }
-        coord_t y = yCenter + adj;
-        
-        points.push_back(LasPoint(x, y, z, 0, 0));
-        
-        auto v = expected.atRC(row, col);
-        if (!v.has_value()) {
+        for (const auto& offset : offsets) {
+            coord_t offsetX = offset.first;
+            coord_t offsetY = offset.second;
+            if (!r.contains(x + offsetX, y + offsetY)) {
+                continue;
+            }
+            auto v = r.atXY(x + offsetX, y + offsetY);
             v.has_value() = true;
-            v.value() = z;
-        }
-        else if (z > v.value()) {
-            v.value() = z;
+            v.value() = std::max(v.value(), z);
         }
         };
-
-    addPointByRowCol(0, 0, 1);
-    addPointByRowCol(0, 0, 2);
-    addPointByRowCol(0, 1, 3);
-    addPointByRowCol(1, 0, 4);
-
-    CsmMaxHeight csmMaker{ a };
-    csmMaker.addPoints(points);
-
-    Raster<csm_t> result = csmMaker.getRaster();
-    ASSERT_EQ((Alignment)result, a);
-    for (cell_t cell : CellIterator(a)) {
-        auto expectedV = expected[cell];
-        auto resultV = result[cell];
-        if (!expectedV.has_value()) {
-            EXPECT_FALSE(resultV.has_value());
+    auto getInitializedRaster = [&]() {
+        Raster<csm_t> r{ a };
+        for (cell_t cell : CellIterator(a)) {
+            auto v = r.atCell(cell);
+            v.value() = std::numeric_limits<coord_t>::lowest();
         }
-        else {
-            EXPECT_TRUE(resultV.has_value());
-            EXPECT_DOUBLE_EQ(expectedV.value(), resultV.value());
+        return r;
+    };
+    auto compareRasters = [](const Raster<csm_t>& expected, const Raster<csm_t>& result) {
+        EXPECT_LE(result.xmin(), expected.xmin());
+        EXPECT_LE(result.ymin(), expected.ymin());
+        EXPECT_GE(result.xmax(), expected.xmax());
+        EXPECT_GE(result.xmax(), expected.xmax());
+        EXPECT_TRUE(expected.crs().isConsistent(result.crs()));
+
+        for (cell_t expectedCell : CellIterator(expected)) {
+            coord_t x = expected.xFromCell(expectedCell);
+            coord_t y = expected.yFromCell(expectedCell);
+            auto expectedV = expected.atCell(expectedCell);
+            auto resultV = result.atXY(x, y);
+            if (expectedV.has_value()) {
+                EXPECT_TRUE(resultV.has_value());
+                EXPECT_NEAR(expectedV.value(), resultV.value(), 0.01);
+            }
+            else {
+                EXPECT_FALSE(resultV.has_value());
+            }
         }
+        };
+    
+    //basic test
+    {
+        SCOPED_TRACE("Basic test");
+        Raster<csm_t> expected = getInitializedRaster();
+
+        std::vector<LasPoint> points;
+
+        addPoint(points, expected, 1.1, 1.2, 5);
+        addPoint(points, expected, 1.2, 1.1, 10); //same cell, higher point
+        addPoint(points, expected, 2.5, 2.5, 3);
+        addPoint(points, expected, 5.3, 5.7, 7);
+
+        CsmMaxHeight maker{ a };
+        maker.addPoints(points);
+        Raster<csm_t> result = maker.getRaster();
+
+        compareRasters(expected, result);
+    }
+
+    //addPointsUnsafe
+    {
+        SCOPED_TRACE("addPointsUnsafe test");
+        Raster<csm_t> expected = getInitializedRaster();
+        std::vector<LasPoint> points;
+        addPoint(points, expected, 1.1, 1.2, 5);
+        addPoint(points, expected, 1.2, 1.1, 10); //same cell, higher point
+        addPoint(points, expected, 2.5, 2.5, 3);
+        addPoint(points, expected, 5.3, 5.7, 7);
+        CsmMaxHeight maker{ a };
+        maker.addPointsUnsafe(points);
+        Raster<csm_t> result = maker.getRaster();
+        compareRasters(expected, result);
+    }
+
+    //with a footprint diameter
+    {
+        SCOPED_TRACE("Footprint diameter test");
+        Raster<csm_t> expected = getInitializedRaster();
+        coord_t radius = 1.0;
+        std::vector<LasPoint> points;
+        addPointRadius(points, expected, 1.1, 1.2, 5, radius);
+        addPointRadius(points, expected, 1.2, 1.1, 10, radius); //same cell, higher point
+        addPointRadius(points, expected, 2.5, 2.5, 3, radius);
+        addPointRadius(points, expected, 1.9, 2.5, 4, radius); //within a radius of the previous point
+        addPointRadius(points, expected, 0.3, 1.3, 7, radius); //within a diagonal radius of the previous point
+        addPointRadius(points, expected, 5.3, 5.7, 7, radius);
+        CsmMaxHeight maker{ a, radius * 2 };
+        maker.addPoints(points);
+        Raster<csm_t> result = maker.getRaster();
+        compareRasters(expected, result);
+    }
+
+    //footprint diameter + addPointsUnsafe
+    {
+        SCOPED_TRACE("Footprint diameter + addPointsUnsafe");
+        Raster<csm_t> expected = getInitializedRaster();
+        coord_t radius = 1.0;
+        std::vector<LasPoint> points;
+        addPointRadius(points, expected, 1.1, 1.2, 5, radius);
+        addPointRadius(points, expected, 1.2, 1.1, 10, radius); //same cell, higher point
+        addPointRadius(points, expected, 2.5, 2.5, 3, radius);
+        addPointRadius(points, expected, 1.9, 2.5, 4, radius); //within a radius of the previous point
+        addPointRadius(points, expected, 0.3, 1.3, 7, radius); //within a diagonal radius of the previous point
+        addPointRadius(points, expected, 5.3, 5.7, 7, radius);
+
+        CsmMaxHeight maker{ a, radius * 2 };
+        maker.addPointsUnsafe(points);
+        Raster<csm_t> result = maker.getRaster();
+        compareRasters(expected, result);
     }
 }
 

@@ -107,6 +107,10 @@ namespace lapis {
     {
         _csmMaker->addPoints(points);
     }
+	void CsmFiller::addPointsUnsafe(const std::span<const LasPoint>& points)
+	{
+		_csmMaker->addPointsUnsafe(points);
+    }
 	CsmMaker::CsmMergeFunc CsmFiller::getMergeFunction() const
 	{
         return _csmMaker->getMergeFunction();

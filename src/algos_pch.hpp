@@ -5,5 +5,6 @@
 #include<LapisGis.hpp>
 
 #include<span>
+#include<numbers>
 
 #endif
