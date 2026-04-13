@@ -8,5 +8,6 @@
 #include"TaoIdGenerator.hpp"
 #include"TaoSegMcGaughey.hpp"
 #include"TaoSegWatershed.hpp"
+#include"TaoBuilder.hpp"
 
 #endif

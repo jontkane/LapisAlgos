@@ -10,7 +10,7 @@ namespace lapis {
     class TaoIdAlgo {
     public:
         virtual ~TaoIdAlgo() noexcept = default;
-        virtual std::vector<IDedTao> process(const Raster<csm_t>& bufferedCsm, TaoIdGenerator& idGen) const = 0;
+        virtual std::vector<IDedTao> process(const Raster<csm_t>& bufferedCsm, TaoIdGenerator idGen) const = 0;
     };
 }
 

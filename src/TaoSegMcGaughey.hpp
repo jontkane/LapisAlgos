@@ -13,7 +13,7 @@ namespace lapis {
         none
     };
 
-    class TaoSegMcGaughey : public TaoSeg {
+    class TaoSegMcGaughey : public TaoSegAlgo {
     public:
         TaoSegMcGaughey(int nVertices,
             csm_t slopeChangeMultiplier,
@@ -24,6 +24,8 @@ namespace lapis {
         static TaoSegMcGaughey fusionDefaults();
 
         SegmentResults process(const Raster<csm_t>& bufferedCsm, const Extent& unbufferedExtent, const std::vector<IDedTao>& taos) const override;
+
+        static std::string name();
     private:
         int _nVertices;
         csm_t _slopeChangeMultiplier;

@@ -4,7 +4,7 @@ namespace lapis {
     TaoIdHighPoints::TaoIdHighPoints(coord_t minHtCsmZUnits, coord_t minDistCsmXYUnits)
         : _minHt(minHtCsmZUnits), _minDist(minDistCsmXYUnits)
     {}
-    std::vector<IDedTao> TaoIdHighPoints::process(const Raster<csm_t>& bufferedCsm, TaoIdGenerator& idGen) const
+    std::vector<IDedTao> TaoIdHighPoints::process(const Raster<csm_t>& bufferedCsm, TaoIdGenerator idGen) const
     {
 		std::vector<IDedTao> candidates = _taoCandidates(bufferedCsm, idGen);
 

@@ -16,7 +16,7 @@ TEST(TaoTest, TaoIdHighPointTest) {
     csm.atRC(2, 0) = 10;
     csm.atRC(4, 1) = 10;
 
-    SequentialTaoIdGenerator idGen;
+    TaoIdGenerator idGen{ 0, 1 };
 
     //basic test
     {
@@ -85,7 +85,7 @@ TEST(TaoTest, WatershedTest) {
 
     auto oneTest = [&](const Raster<csm_t>& r) {
         TaoIdHighPoints idAlgo{ minHt,0 };
-        SequentialTaoIdGenerator idGen;
+        TaoIdGenerator idGen{ 0, 1 };
         auto taos = idAlgo.process(r, idGen);
         TaoSegWatershed watershedAlgo{ minHt, maxHt };
         auto result = watershedAlgo.process(r, unbuffered, taos);
@@ -236,7 +236,7 @@ TEST(TaoTest, McGaugheyTest) {
         McGaugheySmoothType smoothType) {
 
         TaoIdHighPoints idAlgo{ minHt,0 };
-        SequentialTaoIdGenerator idGen;
+        TaoIdGenerator idGen{ 0, 1 };
         auto taos = idAlgo.process(r, idGen);
 
         TaoSegMcGaughey algo{ nVertices, slopeChangeMultiplier, heightCutoffMultiplier, maxDistMultiplier, smoothType };
@@ -307,4 +307,160 @@ TEST(TaoTest, McGaugheyTest) {
 
         oneTest(r, nVertices, slopeChangeMultiplier, heightCutoffMultiplier, maxDistMultiplier, smoothType);
     }
+}
+
+TEST(TaoTest, TaoBuilderTest) {
+    using namespace lapis;
+
+    TaoBuilder builder = TaoBuilder::highPoints(2, 0);
+    TaoIdHighPoints highPoints{ 2,0 };
+
+    builder.addMcGaugheyFusionDefaults(); //default name, should be same as TaoSegMcGaughey::name()
+    builder.addMcGaughey("McGaugheyTwo", 16, 4, 2. / 3, 3. / 4, McGaugheySmoothType::simple); //custom name, already-added algorithm
+    builder.addWatershedDefaults("MyWatershed"); //custom name
+    TaoSegMcGaughey mcgaugheyone = TaoSegMcGaughey::fusionDefaults();
+    TaoSegMcGaughey mcgaugheytwo{ 16, 4, 2. / 3, 3. / 4, McGaugheySmoothType::simple };
+    TaoSegWatershed watershed{ 2, 500 };
+
+    EXPECT_THROW(builder.addWatershedDefaults("MyWatershed"), std::runtime_error);
+
+    Raster<csm_t> r{ Alignment{ Extent{0,20,0,20},20,20 } };
+    buildRandomRaster(r, 0);
+    Extent e{ 5,15,5,15 };
+
+    auto results = builder.process(r, e, TaoIdGenerator{ 1,1 });
+
+    std::vector<IDedTao> highPointsOutput = highPoints.process(r, TaoIdGenerator{ 1,1 });
+
+    ASSERT_TRUE(results.taos.fieldExists("ID"));
+    ASSERT_TRUE(results.taos.fieldExists("X"));
+    ASSERT_TRUE(results.taos.fieldExists("Y"));
+    ASSERT_TRUE(results.taos.fieldExists("Height"));
+
+    struct TaoFields {
+        coord_t x;
+        coord_t y;
+        csm_t height;
+    };
+    std::unordered_map<taoid_t, TaoFields> featuresInPoints;
+    bool init = false;
+
+    for (const IDedTao& tao : highPointsOutput) {
+        taoid_t id = tao.id;
+        coord_t x = r.xFromCell(tao.location);
+        coord_t y = r.yFromCell(tao.location);
+        bool shouldExist = e.containsHalfOpen(x, y);
+        auto height = r.atCell(tao.location).value();
+        bool found = false;
+
+        for (const auto feature : results.taos) {
+            if (!init) {
+                featuresInPoints[feature.getNumericField<taoid_t>("ID")] =
+                { feature.getNumericField<coord_t>("X"), feature.getNumericField<coord_t>("Y"), feature.getNumericField<csm_t>("Height") };
+            }
+            if (feature.getNumericField<taoid_t>("ID") != id) {
+                continue;
+            }
+            if (!shouldExist) {
+                FAIL() << "Found a tao outside the extent";
+            }
+            if (found) {
+                FAIL() << "Found multiple features with the same ID";
+            }
+
+            found = true;
+            EXPECT_NEAR(feature.getNumericField<coord_t>("X"), x, 1e-6);
+            EXPECT_NEAR(feature.getNumericField<coord_t>("Y"), y, 1e-6);
+            EXPECT_NEAR(feature.getNumericField<csm_t>("Height"), height, 1e-6);
+        }
+        init = true;
+        if (shouldExist) {
+            EXPECT_TRUE(found);
+        }
+
+    }
+
+    auto compareSegmenter = [&](const std::string& name, const TaoSegAlgo::SegmentResults& algoResult) {
+        ASSERT_TRUE(results.segmenterResults.contains(name));
+        auto& builderResult = results.segmenterResults.at(name);
+
+        if (algoResult.segmentPolygons.has_value()) {
+            ASSERT_TRUE(builderResult.segmentPolygons.has_value());
+
+            const VectorDataset<MultiPolygon>& algoPolys = algoResult.segmentPolygons.value();
+            const VectorDataset<MultiPolygon>& builderPolys = builderResult.segmentPolygons.value();
+
+            ASSERT_EQ(algoPolys.nFeature(), builderPolys.nFeature());
+            ASSERT_TRUE(builderPolys.fieldExists("ID"));
+            ASSERT_TRUE(builderPolys.fieldExists("X"));
+            ASSERT_TRUE(builderPolys.fieldExists("Y"));
+            ASSERT_TRUE(builderPolys.fieldExists("Height"));
+            ASSERT_TRUE(builderPolys.fieldExists("Area"));
+            
+            
+            for (size_t i = 0; i < algoPolys.nFeature(); ++i) {
+                taoid_t id = algoPolys.getFeature(i).getNumericField<taoid_t>("ID");
+                const auto& algoFeature = algoPolys.getFeature(i);
+                const auto& builderFeature = builderPolys.getFeature(i);
+                EXPECT_EQ(algoFeature.getNumericField<taoid_t>("ID"), builderFeature.getNumericField<taoid_t>("ID"));
+                EXPECT_TRUE(algoFeature.getGeometry().gdalGeometry()->Equals(builderFeature.getGeometry().gdalGeometry().get()));
+
+                ASSERT_TRUE(featuresInPoints.contains(id));
+                EXPECT_NEAR(featuresInPoints.at(id).x, builderFeature.getNumericField<coord_t>("X"), 1e-6);
+                EXPECT_NEAR(featuresInPoints.at(id).y, builderFeature.getNumericField<coord_t>("Y"), 1e-6);
+                EXPECT_NEAR(featuresInPoints.at(id).height, builderFeature.getNumericField<csm_t>("Height"), 1e-6);
+                EXPECT_NEAR(builderFeature.getGeometry().area(), builderFeature.getNumericField<coord_t>("Area"), 1e-6);
+            }
+        }
+        else {
+            EXPECT_FALSE(builderResult.segmentPolygons.has_value());
+        }
+
+
+        if (algoResult.segmentRaster.has_value()) {
+            ASSERT_TRUE(builderResult.segmentRaster.has_value());
+            ASSERT_TRUE(builderResult.taoHeightRaster.has_value());
+            const Raster<taoid_t>& algoRaster = algoResult.segmentRaster.value();
+            const Raster<taoid_t>& builderRaster = builderResult.segmentRaster.value();
+            const Raster<csm_t>& builderHeightRaster = builderResult.taoHeightRaster.value();
+
+            ASSERT_TRUE((Alignment)algoRaster == (Alignment)builderRaster);
+            ASSERT_TRUE((Alignment)algoRaster == (Alignment)builderHeightRaster);
+
+            for (cell_t cell : CellIterator(algoRaster)) {
+                auto algoV = algoRaster.atCell(cell);
+                auto builderV = builderRaster.atCell(cell);
+                auto builderHeightV = builderHeightRaster.atCell(cell);
+                if (!algoV.has_value()) {
+                    EXPECT_FALSE(builderV.has_value());
+                    EXPECT_FALSE(builderHeightV.has_value());
+                }
+                else {
+                    EXPECT_TRUE(builderV.has_value());
+                    EXPECT_EQ(algoV.value(), builderV.value());
+                    auto builderHeightV = builderHeightRaster.atCell(cell);
+                    EXPECT_TRUE(builderHeightV.has_value());
+                    ASSERT_TRUE(featuresInPoints.contains(algoV.value()));
+                    EXPECT_NEAR(builderHeightV.value(), featuresInPoints.at(algoV.value()).height, 1e-6);
+                }
+            }
+        }
+        else {
+            EXPECT_FALSE(builderResult.segmentRaster.has_value());
+            EXPECT_FALSE(builderResult.taoHeightRaster.has_value());
+        }
+        };
+
+    ASSERT_TRUE(results.segmenterResults.contains("McGaughey"));
+    auto mcgaugheyOneResult = mcgaugheyone.process(r, e, highPointsOutput);
+    compareSegmenter("McGaughey", mcgaugheyOneResult);
+
+    ASSERT_TRUE(results.segmenterResults.contains("McGaugheyTwo"));
+    auto mcgaugheyTwoResult = mcgaugheytwo.process(r, e, highPointsOutput);
+    compareSegmenter("McGaugheyTwo", mcgaugheyTwoResult);
+
+    ASSERT_TRUE(results.segmenterResults.contains("MyWatershed"));
+    auto watershedResult = watershed.process(r, e, highPointsOutput);
+    compareSegmenter("MyWatershed", watershedResult);
+    
 }

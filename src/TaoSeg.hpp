@@ -6,9 +6,9 @@
 #include"algos_types.hpp"
 
 namespace lapis {
-    class TaoSeg {
+    class TaoSegAlgo {
     public:
-        virtual ~TaoSeg() noexcept = default;
+        virtual ~TaoSegAlgo() noexcept = default;
 
         struct SegmentResults {
             std::optional<Raster<taoid_t>> segmentRaster;

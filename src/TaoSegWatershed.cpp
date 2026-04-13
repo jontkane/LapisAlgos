@@ -59,12 +59,12 @@ namespace lapis {
 	TaoSegWatershed::TaoSegWatershed(csm_t minHt, csm_t maxHt)
 		: _minHt(minHt), _maxHt(maxHt)
 	{}
-	TaoSeg::SegmentResults TaoSegWatershed::process(const Raster<csm_t>& bufferedCsm, const Extent& unbufferedExtent, const std::vector<IDedTao>& taos) const
+	TaoSegAlgo::SegmentResults TaoSegWatershed::process(const Raster<csm_t>& bufferedCsm, const Extent& unbufferedExtent, const std::vector<IDedTao>& taos) const
 	{
 		//this is modified from https://arxiv.org/pdf/1511.04463.pdf
 		//algorithm 5 on page 15
 		HierarchicalQueue open{ _minHt, _maxHt, _binSize };
-		const taoid_t TO_BE_LABELED = -1;
+		constexpr taoid_t TO_BE_LABELED = -1;
 		Raster<taoid_t> labels((Alignment)bufferedCsm);
 		for (cell_t cell = 0; cell < labels.ncell(); ++cell) {
 			if (bufferedCsm.atCellUnsafe(cell).has_value() && bufferedCsm.atCellUnsafe(cell).value() >= _minHt) {
@@ -140,5 +140,9 @@ namespace lapis {
 		out.segmentPolygons = rasterToMultiPolygonForTaos(*out.segmentRaster, nullptr);
 
 		return out;
+	}
+	std::string TaoSegWatershed::name()
+	{
+		return "Watershed";
 	}
 }

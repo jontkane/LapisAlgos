@@ -22,7 +22,7 @@ namespace lapis {
     {
         return TaoSegMcGaughey(16, 4, 2./3., 3./4., McGaugheySmoothType::fusion);
     }
-    TaoSeg::SegmentResults TaoSegMcGaughey::process(const Raster<csm_t>& bufferedCsm, const Extent& unbufferedExtent, const std::vector<IDedTao>& taos) const
+    TaoSegAlgo::SegmentResults TaoSegMcGaughey::process(const Raster<csm_t>& bufferedCsm, const Extent& unbufferedExtent, const std::vector<IDedTao>& taos) const
     {
         VectorDataset<MultiPolygon> polygons{ bufferedCsm.crs() };
         polygons.addNumericField<taoid_t>("ID");
@@ -48,6 +48,10 @@ namespace lapis {
         results.segmentPolygons = std::move(polygons);
         return results;
     }
+	std::string TaoSegMcGaughey::name()
+	{
+		return "McGaughey";
+	}
     Polygon TaoSegMcGaughey::_processOneTao(const coord_t x, const coord_t y, const Raster<csm_t>& bufferedCsm) const
     {
 		if (!bufferedCsm.contains(x, y)) {
