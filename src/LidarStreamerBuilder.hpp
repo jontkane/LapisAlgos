@@ -14,12 +14,14 @@
 * builder.addDem("dem.tif").setZUnits(linearUnitPresets::meter);
 * 
 * // set various configurations.
-* builder.setLasZUnitsOverride(linearUnitPresets::meter).setExtent(e).addDefaultFilters();
+* builder.setLasZUnitsOverride(linearUnitPresets::meter).setAOI(polygon).addDefaultFilters();
 * 
 * // set up the pipeline that the points are sent through. They are applied in the order you specify
 * builder.normalizeByDem().apply<LidarStreamerMinMaxFilter>(0,100).apply<LidarStreamerReprojector>(targetCrs);
 * 
 * // request a LasSpecifier. This is a thread-safe way to specify the las files used as input. You may request multiple of these from the same builder.
+* // note that they contain a reference to the builder that created them; modifying that builder will modify the specifier in a thread-unsafe way
+* // it is recommended to do all your configuration at once
 * auto lasSpec = builder.createLasSpecifier().addLas("file1.laz").addLas("file2.laz");
 * 
 * //get your final streamer
@@ -54,7 +56,9 @@ namespace lapis {
         LidarStreamerBuilder& setDemZUnitsOverride(const LinearUnit& zUnits);
         LidarStreamerBuilder& clearDemZUnitsOverride();
         
-        LidarStreamerBuilder& setExtent(const Extent& extent);
+        LidarStreamerBuilder& setAOI(const Extent& extent);
+        LidarStreamerBuilder& setAOI(const Polygon& poly);
+        LidarStreamerBuilder& setAOI(const MultiPolygon& multipoly);
 
         LidarStreamerBuilder& addFilter(std::shared_ptr<LasFilter> filter);
         LidarStreamerBuilder& addDefaultFilters();
@@ -72,6 +76,10 @@ namespace lapis {
         
         std::optional<NormalizeByRasterFactory> _normalizeFactory;
         std::optional<Extent> _extent;
+        using AOIType = std::variant<Extent, Polygon, MultiPolygon>;
+        std::optional<AOIType> _aoi;
+        std::shared_ptr<LasFilter> _aoiFilter(const CoordRef& crs) const;
+
         std::vector<std::shared_ptr<LasFilter>> _filters;
 
         std::function<std::unique_ptr<LidarStreamer>(std::unique_ptr<LidarStreamer>)> _decoratorChain;

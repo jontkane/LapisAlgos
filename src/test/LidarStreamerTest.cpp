@@ -643,6 +643,7 @@ TEST(LidarStreamerTest, TestLidarStreamerBuilder) {
     constexpr size_t lasNPoints = 93;
     std::string demfilename = std::string(LAPISALGOSTESTFILES) + "/testlazground.img";
 
+
     auto lasSpec = builder.createLasSpecifier();
     lasSpec.addLas(lasfilename);
 
@@ -810,7 +811,7 @@ TEST(LidarStreamerTest, TestLidarStreamerBuilder) {
 
     //specifying an extent should cause non-overlapping las files to be ignored
     builder.reset();
-    builder.setExtent(Extent(0, 1, 0, 1));
+    builder.setAOI(Extent(0, 1, 0, 1));
     lasSpec = builder.createLasSpecifier();
     lasSpec.addLas(lasfilename);
     {
@@ -822,7 +823,7 @@ TEST(LidarStreamerTest, TestLidarStreamerBuilder) {
 
     //specifying an extent should also apply a filter to the points of files that do pass
     builder.reset();
-    builder.setExtent(Extent(299001, 299050, 4201090, 4202050));
+    builder.setAOI(Extent(299001, 299050, 4201090, 4202050));
     lasSpec = builder.createLasSpecifier();
     lasSpec.addLas(lasfilename);
     {
@@ -834,4 +835,86 @@ TEST(LidarStreamerTest, TestLidarStreamerBuilder) {
         auto points = streamer->getPoints(streamer->nPoints());
         EXPECT_EQ(points.size(), expectedNPoints);
     }
+
+    //polygon aoi
+    builder.reset();
+    std::vector<CoordXY> polygonCoords = {
+        { 299000, 4202000 },
+        { 299001, 4202000 },
+        { 299001, 4202005 },
+    };
+    Polygon aoiPolygon(polygonCoords, CoordRef{ "EPSG:6340+5703" });
+    builder.setAOI(aoiPolygon);
+    lasSpec = builder.createLasSpecifier();
+    lasSpec.addLas(lasfilename);
+    {
+        size_t expectedNPointsMin = 38;
+        size_t expectedNPointsMax = 40; //no guarantee is made for points exactly on the edge
+        auto streamer = lasSpec.buildInMemory();
+        EXPECT_TRUE(streamer->hasMorePoints());
+        EXPECT_GE(streamer->nPoints(), expectedNPointsMin);
+        EXPECT_LE(streamer->nPoints(), expectedNPointsMax);
+        EXPECT_GE(streamer->nPointsRemaining(), expectedNPointsMin);
+        EXPECT_LE(streamer->nPointsRemaining(), expectedNPointsMax);
+        auto points = streamer->getPoints(streamer->nPoints());
+        EXPECT_GE(points.size(), expectedNPointsMin);
+        EXPECT_LE(points.size(), expectedNPointsMax);
+    }
+
+    //polygons should be projected as necessary in the background
+    builder.reset();
+    aoiPolygon.projectInPlace(CoordRef{ "EPSG:26910" });
+    builder.setAOI(aoiPolygon);
+    lasSpec = builder.createLasSpecifier();
+    lasSpec.addLas(lasfilename);
+    {
+        size_t expectedNPointsMin = 38;
+        size_t expectedNPointsMax = 40; //no guarantee is made for points exactly on the edge
+        auto streamer = lasSpec.buildInMemory();
+        EXPECT_TRUE(streamer->hasMorePoints());
+        EXPECT_GE(streamer->nPoints(), expectedNPointsMin);
+        EXPECT_LE(streamer->nPoints(), expectedNPointsMax);
+        EXPECT_GE(streamer->nPointsRemaining(), expectedNPointsMin);
+        EXPECT_LE(streamer->nPointsRemaining(), expectedNPointsMax);
+        auto points = streamer->getPoints(streamer->nPoints());
+        EXPECT_GE(points.size(), expectedNPointsMin);
+        EXPECT_LE(points.size(), expectedNPointsMax);
+    }
+
+    //multipolygon
+    //this is just dividing the previous polygon into two and making sure we get the same result
+    builder.reset();
+    std::vector<CoordXY> leftPolyCoords = {
+        { 299000, 4202000 },
+        { 299000.5, 4202002.5 },
+        { 299000.5, 4202000 },
+    };
+    std::vector<CoordXY> rightPolyCoords = {
+        { 299000.5, 4202002.5 },
+        { 299001, 4202005 },
+        { 299001, 4202000},
+        { 299000.5, 4202000  }
+    };
+    Polygon leftPoly(leftPolyCoords, CoordRef{ "EPSG:6340+5703" });
+    Polygon rightPoly(rightPolyCoords, CoordRef{ "EPSG:6340+5703" });
+    MultiPolygon multiPoly{};
+    multiPoly.addPolygon(leftPoly);
+    multiPoly.addPolygon(rightPoly);
+    builder.setAOI(multiPoly);
+    lasSpec = builder.createLasSpecifier();
+    lasSpec.addLas(lasfilename);
+    {
+        size_t expectedNPointsMin = 38;
+        size_t expectedNPointsMax = 40; //no guarantee is made for points exactly on the edge
+        auto streamer = lasSpec.buildInMemory();
+        EXPECT_TRUE(streamer->hasMorePoints());
+        EXPECT_GE(streamer->nPoints(), expectedNPointsMin);
+        EXPECT_LE(streamer->nPoints(), expectedNPointsMax);
+        EXPECT_GE(streamer->nPointsRemaining(), expectedNPointsMin);
+        EXPECT_LE(streamer->nPointsRemaining(), expectedNPointsMax);
+        auto points = streamer->getPoints(streamer->nPoints());
+        EXPECT_GE(points.size(), expectedNPointsMin);
+        EXPECT_LE(points.size(), expectedNPointsMax);
+    }
+
 }

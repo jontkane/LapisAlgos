@@ -121,9 +121,22 @@ namespace lapis {
         }
         return *this;
     }
-    LidarStreamerBuilder& LidarStreamerBuilder::setExtent(const Extent& extent)
+    LidarStreamerBuilder& LidarStreamerBuilder::setAOI(const Extent& extent)
     {
         _extent = extent;
+        _aoi = extent;
+        return *this;
+    }
+    LidarStreamerBuilder& LidarStreamerBuilder::setAOI(const Polygon& poly)
+    {
+        _extent = poly.boundingBox();
+        _aoi = poly;
+        return *this;
+    }
+    LidarStreamerBuilder& LidarStreamerBuilder::setAOI(const MultiPolygon& multipoly)
+    {
+        _extent = multipoly.boundingBox();
+        _aoi = multipoly;
         return *this;
     }
     LidarStreamerBuilder& LidarStreamerBuilder::addFilter(std::shared_ptr<LasFilter> filter)
@@ -171,6 +184,41 @@ namespace lapis {
     {
         *this = LidarStreamerBuilder();
     }
+    std::shared_ptr<LasFilter> LidarStreamerBuilder::_aoiFilter(const CoordRef& crs) const
+    {
+        if (!_aoi) {
+            return nullptr;
+        }
+        if (std::holds_alternative<Extent>(*_aoi)) {
+            const Extent& orig = std::get<Extent>(*_aoi);
+            if (crs.isConsistentHoriz(orig.crs())) {
+                return std::make_shared<LasFilterExtent>(orig);
+            }
+            Extent projE = QuadExtent(orig, crs).outerExtent();
+            return std::make_shared<LasFilterExtent>(projE);
+        }
+        else if (std::holds_alternative<Polygon>(*_aoi)) {
+            const Polygon& orig = std::get<Polygon>(*_aoi);
+            if (crs.isConsistentHoriz(orig.crs())) {
+                return std::make_shared<LasFilterPolygon>(orig);
+            }
+            Polygon projP = orig;
+            projP.projectInPlace(crs);
+            return std::make_shared<LasFilterPolygon>(projP);
+        }
+        else if (std::holds_alternative<MultiPolygon>(*_aoi)) {
+            const MultiPolygon& orig = std::get<MultiPolygon>(*_aoi);
+            if (crs.isConsistentHoriz(orig.crs())) {
+                return std::make_shared<LasFilterMultiPolygon>(orig);
+            }
+            MultiPolygon projMP = orig;
+            projMP.projectInPlace(crs);
+            return std::make_shared<LasFilterMultiPolygon>(projMP);
+        }
+        else {
+            throw std::runtime_error("Invalid AOI type");
+        }
+    }
     std::unique_ptr<LidarStreamer> LidarStreamerBuilder::LasSpecifier::_buildBaseStreamer() const
     {
         std::vector<std::unique_ptr<LidarStreamer>> baseStreamers;
@@ -198,8 +246,8 @@ namespace lapis {
             for (const auto& filter : _parent->_filters) {
                 reader.addFilter(filter);
             }
-            if (_parent->_extent) {
-                reader.addFilter(std::make_shared<LasFilterExtent>(projE));
+            if (_parent->_aoi) {
+                reader.addFilter(_parent->_aoiFilter(reader.crs()));
             }
             baseStreamers.emplace_back(new LidarStreamerHardDrive(std::move(reader)));
         }
