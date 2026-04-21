@@ -5,7 +5,6 @@
 #include"AllLidarStreamers.hpp"
 #include"AllCsmMakers.hpp"
 #include"AllNormalizers.hpp"
-#include"AllTaoId.hpp"
-#include"AllTaoSeg.hpp"
+#include"AllTaoAlgos.hpp"
 
 #endif

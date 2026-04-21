@@ -3,6 +3,8 @@ include_guard(GLOBAL)
 set(LAPISGISCMAKE_PATH "${LAPIS_DIR}/src/gis/LapisGis.cmake" CACHE PATH "Path to LapisGis.cmake")
 include(${LAPISGISCMAKE_PATH})
 
+set(LAPISALGOS_DIR ${CMAKE_CURRENT_LIST_DIR})
+
 file(GLOB LAPISALGOS_SOURCES
 	${LAPISALGOS_DIR}/src/*.hpp
 	${LAPISALGOS_DIR}/src/*.cpp)
